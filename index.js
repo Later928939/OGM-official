@@ -16,12 +16,17 @@ app.post('/webhook', middleware(lineConfig), async (req, res) => {
     res.status(200).end();
     const events = req.body.events;
     for (const event of events) {
-          if (event.type === 'message' && event.message.type === 'text') {
-                  await handleMessage(event);
-          }
-    }
+              if (event.type === 'follow') {
+                          await handleFollow(event);
+              } else if (event.type === 'message' && event.message.type === 'text') {
+        await handleMessage(event);
+              }
 });
 
+async function handleFollow(event) {
+      const greeting = process.env.GREETING_MESSAGE || 'コンニチハ！OGM公式LINEへようこそ！';
+      await client.replyMessage(event.replyToken, { type: 'text', text: greeting });
+}
 async function handleMessage(event) {
     const userMessage = event.message.text;
     const systemPrompt = process.env.SYSTEM_PROMPT || 'あなたは親切なアシスタントです。';
