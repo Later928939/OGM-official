@@ -5,41 +5,41 @@ const Anthropic = require('@anthropic-ai/sdk');
 const app = express();
 
 const lineConfig = {
-    channelSecret: process.env.SECRET,
-    channelAccessToken: process.env.TOKEN,
+  channelSecret: process.env.SECRET,
+  channelAccessToken: process.env.TOKEN,
 };
 
 const client = new Client(lineConfig);
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 app.post('/webhook', middleware(lineConfig), async (req, res) => {
-    res.status(200).end();
-    const events = req.body.events;
-    for (const event of events) {
-              if (event.type === 'follow') {
-                          await handleFollow(event);
-              } else if (event.type === 'message' && event.message.type === 'text') {
-        await handleMessage(event);
-              }
+  res.status(200).end();
+  const events = req.body.events;
+  for (const event of events) {
+    if (event.type === 'follow') {
+      await handleFollow(event);
+    } else if (event.type === 'message' && event.message.type === 'text') {
+      await handleMessage(event);
+    }
+  }
 });
 
 async function handleFollow(event) {
-      const greeting = process.env.GREETING_MESSAGE || 'コンニチハ！OGM公式LINEへようこそ！';
-      await client.replyMessage(event.replyToken, { type: 'text', text: greeting });
+  const greeting = process.env.GREETING_MESSAGE || 'OGM LINE';
+  await client.replyMessage(event.replyToken, { type: 'text', text: greeting });
 }
+
 async function handleMessage(event) {
-    const userMessage = event.message.text;
-    const systemPrompt = process.env.SYSTEM_PROMPT || 'あなたは親切なアシスタントです。';
-
+  const userMessage = event.message.text;
+  const systemPrompt = process.env.SYSTEM_PROMPT || 'You are OGM assistant.';
   const response = await anthropic.messages.create({
-        model: 'claude-opus-4-5',
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: userMessage }],
+    model: 'claude-opus-4-5',
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userMessage }],
   });
-
   const replyText = response.content[0].text;
-    await client.replyMessage(event.replyToken, { type: 'text', text: replyText });
+  await client.replyMessage(event.replyToken, { type: 'text', text: replyText });
 }
 
 const PORT = process.env.PORT || 3000;
