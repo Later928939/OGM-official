@@ -73,7 +73,8 @@ async function handleEvent(event) {
   }
 
   // AIフォールバック
-  return reply(event.replyToken, await callClaude(text));
+  const aiReply = await callClaude(text).catch(() => '少し考えさせてください。もう一度メッセージを送ってみてください。');
+  return reply(event.replyToken, aiReply);
 }
 
 // ==========================================================
@@ -122,13 +123,15 @@ async function handleAdminCommand(userId, text, replyToken) {
   if (text.startsWith('/告知')) {
     const arg = text.replace('/告知', '').trim();
     await reply(replyToken, '⏳ 告知文を生成中...');
-    const prompt = arg
-      ? `以下のイベントについてLINE告知文を作成してください: "${arg}"\nSYSTEM_PROMPTに記載の情報のみ使用し、架空の情報は絶対に追加しないでください。告知文のみを返してください。`
-      : 'SYSTEM_PROMPTに記載されている今後のイベントのうち、最も直近のものをLINE告知文にしてください。架空の日程・場所・内容は絶対に追加しないでください。告知文のみを返してください。';
     try {
+      const prompt = arg
+        ? `以下のイベントについてLINE告知文を作成してください: "${arg}"\nSYSTEM_PROMPTに記載の情報のみ使用し、架空の情報は絶対に追加しないでください。告知文のみを返してください。`
+        : 'SYSTEM_PROMPTに記載されている今後のイベントのうち、最も直近のものをLINE告知文にしてください。架空の日程・場所・内容は絶対に追加しないでください。告知文のみを返してください。';
       const announcement = await callClaude(prompt, 800);
       await broadcast(announcement);
+      await push(userId, '✅ 告知を配信しました。');
     } catch (e) {
+      console.error('/告知 error:', e.message);
       await push(userId, '❌ 告知文の生成に失敗しました: ' + e.message);
     }
     return;
@@ -136,7 +139,7 @@ async function handleAdminCommand(userId, text, replyToken) {
 
   // /全員 [メッセージ]
   if (text.startsWith('/全員 ')) {
-    const msg = text.slice(4).trim();
+    const msg = text.slice('/全員 '.length).trim();
     if (!msg) return reply(replyToken, '⚠️ メッセージを入力してください。');
     try {
       await broadcast(msg);
@@ -154,8 +157,12 @@ async function handleAdminCommand(userId, text, replyToken) {
 
   // /イベント
   if (text === '/イベント') {
-    const res = await callClaude('SYSTEM_PROMPTに記載の今後のイベント一覧を、日付・イベント名・場所を含めて教えてください。架空の情報は追加しないでください。', 600).catch(e => '❌ 取得失敗: ' + e.message);
-    return reply(replyToken, res);
+    try {
+      const res = await callClaude('SYSTEM_PROMPTに記載の今後のイベント一覧を、日付・イベント名・場所を含めて教えてください。架空の情報は追加しないでください。', 600);
+      return reply(replyToken, res);
+    } catch (e) {
+      return reply(replyToken, '❌ 取得失敗: ' + e.message);
+    }
   }
 
   // /ヘルプ
@@ -198,7 +205,7 @@ async function handlePostback(event) {
 // 共通ヘルパー
 // ==========================================================
 
-// Claude AI 呼び出し（全箇所で使い回し）
+// Claude AI 呼び出し
 async function callClaude(userPrompt, maxTokens = 500) {
   const res = await anthropic.messages.create({
     model: 'claude-opus-4-5',
@@ -209,7 +216,7 @@ async function callClaude(userPrompt, maxTokens = 500) {
   return res.content[0].text;
 }
 
-// LINE返信
+// LINE返信（replyToken使用）
 function reply(replyToken, text) {
   return client.replyMessage({ replyToken, messages: [{ type: 'text', text }] });
 }
@@ -219,9 +226,9 @@ function push(userId, text) {
   return client.pushMessage({ to: userId, messages: [{ type: 'text', text }] });
 }
 
-// LINE全員ブロードキャスト（SDK使用・axiosなし）
+// LINE全員ブロードキャスト（SDK v9の正しい引数形式）
 function broadcast(text) {
-  return client.broadcast({ messages: [{ type: 'text', text }] });
+  return client.broadcast([{ type: 'text', text }]);
 }
 
 // ==========================================================
