@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>OGM公式LINEBot システム説明書</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Hiragino Sans','Meiryo',sans-serif;font-size:13px;line-height:1.7;color:#222;background:#fff;padding:24px 30px}
+.cover{text-align:center;padding:50px 40px;background:linear-gradient(135deg,#00b900,#00a000);color:#fff;border-radius:12px;margin-bottom:32px}
+.cover .logo{font-size:52px;margin-bottom:10px}
+.cover h1{font-size:26px;font-weight:900;margin-bottom:6px;letter-spacing:2px}
+.cover h2{font-size:15px;font-weight:400;opacity:.9;margin-bottom:24px}
+.cover .meta{display:inline-block;background:rgba(255,255,255,.2);border-radius:8px;padding:10px 24px;font-size:12px;line-height:1.9}
+h2.sec{font-size:17px;font-weight:800;color:#00b900;border-left:5px solid #00b900;padding-left:12px;margin:28px 0 12px}
+h3.sub{font-size:13.5px;font-weight:700;color:#333;margin:16px 0 7px;border-bottom:1px solid #e0e0e0;padding-bottom:3px}
+.card{background:#f8fdf8;border:1px solid #d0ead0;border-radius:10px;padding:14px 18px;margin-bottom:12px}
+.card-title{font-size:13.5px;font-weight:700;color:#00a000;margin-bottom:7px}
+.badge{display:inline-block;padding:2px 7px;border-radius:20px;font-size:10.5px;font-weight:600}
+.bg{background:#00b900;color:#fff}.bb{background:#0066cc;color:#fff}.bo{background:#ff8800;color:#fff}.bgr{background:#666;color:#fff}.bp{background:#7700cc;color:#fff}
+table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px}
+table th{background:#00b900;color:#fff;padding:9px 11px;text-align:left;font-weight:700}
+table td{padding:8px 11px;border-bottom:1px solid #e0e0e0;vertical-align:top}
+table tr:nth-child(even) td{background:#f5fdf5}
+.flow{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:10px 0}
+.fs{background:#e8f5e8;border:1px solid #00b900;border-radius:6px;padding:5px 10px;font-size:11.5px;font-weight:600;color:#006600;text-align:center}
+.fa{color:#00b900;font-size:16px;font-weight:700}
+.cmd{background:#1e1e2e;color:#cdd6f4;border-radius:8px;padding:11px 14px;font-family:'Courier New',monospace;font-size:11.5px;margin:7px 0;line-height:1.9}
+.cl{color:#a6e3a1;font-weight:700}.cd{color:#89b4fa}
+.url{background:#f0f0ff;border:1px solid #aad;border-radius:5px;padding:6px 12px;font-family:monospace;font-size:11.5px;color:#333399;margin:3px 0;word-break:break-all}
+.warn{background:#fff8e1;border-left:4px solid #ffa000;padding:9px 13px;margin:9px 0;border-radius:0 5px 5px 0;font-size:12px}
+.info{background:#e3f2fd;border-left:4px solid #1976d2;padding:9px 13px;margin:9px 0;border-radius:0 5px 5px 0;font-size:12px}
+.toc{background:#f5fdf5;border:1px solid #c8e6c8;border-radius:10px;padding:16px 22px;margin-bottom:24px}
+.toc h3{font-size:14px;color:#00a000;margin-bottom:8px}
+.toc ol{padding-left:18px}
+.toc li{margin:4px 0;font-size:12.5px}
+.diagram{text-align:center;background:#fafafa;border:1px solid #ddd;border-radius:10px;padding:18px;margin:12px 0;font-size:12px}
+.box{display:inline-block;border:2px solid #00b900;border-radius:7px;padding:7px 14px;margin:4px;background:#fff;font-weight:600;font-size:11.5px}
+.bline{border-color:#00b900;color:#006600}.brail{border-color:#7700cc;color:#550099}.bcla{border-color:#cc6600;color:#994400}.bsh{border-color:#1976d2;color:#0d47a1}.bgh{border-color:#333;color:#111}.buser{border-color:#f44336;color:#b71c1c}
+.row{display:flex;justify-content:center;align-items:center;flex-wrap:wrap;margin:5px 0}
+.arr{font-size:18px;color:#aaa;margin:0 4px}
+.sn{display:inline-flex;width:22px;height:22px;background:#00b900;color:#fff;border-radius:50%;align-items:center;justify-content:center;font-weight:700;font-size:12px;margin-right:6px;flex-shrink:0}
+.sr{display:flex;align-items:flex-start;margin:5px 0}
+.tc{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+footer{text-align:center;color:#aaa;font-size:11px;margin-top:36px;padding-top:14px;border-top:1px solid #eee}
+@media print{body{padding:0}.pb{page-break-before:always}h2.sec{page-break-after:avoid}}
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="logo">🌐</div>
+  <h1>OGM 公式 LINE Bot</h1>
+  <h2>システム説明書 ― 第三者向け完全ガイド</h2>
+  <div class="meta">
+    団体名：OGM（大阪公立大学 国際交流団体）<br>
+    LINE公式アカウント：@154zxfme<br>
+    作成日：2026年5月21日
+  </div>
+</div>
+
+<div class="toc">
+  <h3>📋 目次</h3>
+  <ol>
+    <li>システム全体像 ― 何がつながっているか</li>
+    <li>構成要素の説明 ― 各サービスの役割</li>
+    <li>ユーザー向け機能 ― LINEで何ができるか</li>
+    <li>管理者向けコマンド一覧</li>
+    <li>イベント情報の更新方法（最重要）</li>
+    <li>各サービスの編集場所・ログイン先</li>
+    <li>環境変数一覧（設定値）</li>
+    <li>よくある質問 / トラブルシューティング</li>
+  </ol>
+</div>
+
+<h2 class="sec">1. システム全体像 ― 何がつながっているか</h2>
+<p style="margin-bottom:12px;">OGM公式LINEBotは、以下の<strong>5つのサービス</strong>が連携して動いています。ユーザーがLINEでメッセージを送ると、それが自動的に処理されてさまざまな機能が実行されます。</p>
+
+<div class="diagram">
+  <div class="row">
+    <span class="box buser">👤 LINE ユーザー</span>
+    <span class="arr">⟷</span>
+    <span class="box bline">💚 LINE公式アカウント<br>@154zxfme</span>
+    <span class="arr">⟷</span>
+    <span class="box brail">🚂 Railway<br>（サーバー）</span>
+  </div>
+  <div style="margin:8px 0;color:#aaa;font-size:16px;">↕ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ↕</div>
+  <div class="row">
+    <span class="box bgh">🐙 GitHub<br>（プログラム保管）</span>
+    <span class="arr">&nbsp;&nbsp;&nbsp;</span>
+    <span class="box bcla">🤖 Claude AI<br>（AI応答・告知生成）</span>
+    <span class="arr">&nbsp;&nbsp;&nbsp;</span>
+    <span class="box bsh">📊 Google Sheets<br>（参加者データ）</span>
+  </div>
+</div>
+
+<div class="info"><strong>簡単に言うと：</strong> ユーザーがLINEにメッセージを送る → Railway上で動くプログラム（index.js）が受け取り → 内容に応じてAI応答・登録処理・告知配信などを実行する、という流れです。</div>
+
+<h2 class="sec">2. 構成要素の説明 ― 各サービスの役割</h2>
+
+<table>
+  <tr><th>サービス名</th><th>役割</th><th>アクセス先</th></tr>
+  <tr><td><strong>💚 LINE公式アカウント</strong><br><span class="badge bg">フロントエンド</span></td><td>ユーザーが直接触れる窓口。メッセージの送受信、タグ管理、絞り込み配信を行う。OA Manager（ブラウザ画面）から手動操作も可能。</td><td class="url">manager.line.biz/account/@154zxfme</td></tr>
+  <tr><td><strong>🚂 Railway</strong><br><span class="badge bp">サーバー</span></td><td>Botのプログラムを24時間365日動かし続けるサーバー。GitHubにコードをプッシュすると自動でデプロイ（更新）される。環境変数（APIキーなど）もここで管理。</td><td class="url">railway.com → earnest-surprise → OGM-official</td></tr>
+  <tr><td><strong>🐙 GitHub</strong><br><span class="badge bgr">コード管理</span></td><td>Botのプログラムコード（index.js）を保管・バージョン管理。ここを編集するとRailwayに自動で反映される。</td><td class="url">github.com/Later928939/OGM-official</td></tr>
+  <tr><td><strong>🤖 Claude AI</strong><br><span class="badge bo">AIエンジン</span></td><td>ユーザーの自由なメッセージへのAI応答と、/告知コマンド時の告知文自動生成を担当。SYSTEM_PROMPTに書かれたOGMの情報・イベント情報を参照して返答する。</td><td class="url">platform.claude.com（APIキーのみ使用）</td></tr>
+  <tr><td><strong>📊 Google Sheets</strong><br><span class="badge bb">データベース</span></td><td>登録メンバーの情報（学籍番号・氏名・メールアドレス）とイベント参加記録を保管するスプレッドシート。シート名：メンバー管理 / EventManagement</td><td class="url">docs.google.com/spreadsheets/d/1DkAKC2ZZg8zySzX_jROOfcFIOcfWwdadVQnyD3VIyFc</td></tr>
+</table>
+
+<div class="pb"></div>
+
+<h2 class="sec">3. ユーザー向け機能 ― LINEで何ができるか</h2>
+
+<div class="card">
+  <div class="card-title">📝 メンバー登録機能</div>
+  <p style="margin-bottom:9px;">「登録」「参加登録」「登録する」のいずれかを送ると、3ステップでメンバー登録できます。</p>
+  <div class="flow">
+    <div class="fs">「登録」と送信</div><div class="fa">→</div>
+    <div class="fs">学籍番号を入力<br>（例: k24001234）</div><div class="fa">→</div>
+    <div class="fs">氏名を入力</div><div class="fa">→</div>
+    <div class="fs">メールアドレスを入力</div><div class="fa">→</div>
+    <div class="fs">✅ 登録完了！<br>Sheetsに保存</div>
+  </div>
+  <div class="warn">学籍番号は「英字1文字＋数字6〜8桁」の形式のみ受け付けます（例: k24001234）。</div>
+</div>
+
+<div class="card">
+  <div class="card-title">🤖 AI自動応答機能</div>
+  <p>登録フロー中でなく、コマンドでもないメッセージを送ると、Claude AIがSYSTEM_PROMPTに書かれたOGMの情報を参照しながら自動で返答します。イベントの詳細・OGMについての質問などに答えられます。</p>
+</div>
+
+<div class="card">
+  <div class="card-title">👋 フォロー時の自動挨拶</div>
+  <p>ユーザーがLINEアカウントを友だち追加したとき、設定されたGREETING_MESSAGEが自動送信されます。</p>
+</div>
+
+<div class="card">
+  <div class="card-title">✅ イベント参加ボタン（ポストバック）</div>
+  <p>管理者がボタン付きの告知を配信した際、ユーザーが「参加する」を押すと、参加記録がGoogle Sheetsに自動保存されます。</p>
+</div>
+
+<h2 class="sec">4. 管理者向けコマンド一覧</h2>
+<p style="margin-bottom:10px;">管理者のLINEアカウントからのみ使えるコマンドです。LINEチャット画面でそのまま打ち込みます。</p>
+
+<div class="cmd">
+  <div><span class="cl">/告知</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cd">→ SYSTEM_PROMPTの直近イベントをClaudeが告知文に変換して全員に配信</span></div>
+  <div><span class="cl">/告知 [内容]</span>&nbsp;&nbsp;<span class="cd">→ 指定した内容の告知文をClaudeが生成して全員に配信（例: /告知 スポーツ大会）</span></div>
+  <div><span class="cl">/全員 [MSG]</span>&nbsp;&nbsp;&nbsp;<span class="cd">→ 自由なテキストをそのまま全員に一斉配信</span></div>
+  <div><span class="cl">/登録者</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cd">→ Google Sheetsに登録されているメンバー数を表示</span></div>
+  <div><span class="cl">/イベント</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cd">→ SYSTEM_PROMPTに書かれた今後のイベント一覧を確認（管理者のみ）</span></div>
+  <div><span class="cl">/ヘルプ</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="cd">→ コマンド一覧を表示</span></div>
+</div>
+
+<div class="info"><strong>タグ配信について：</strong> 特定イベント参加者だけに絞り込んで配信する「タグ配信」は、LINE OA Manager（manager.line.biz）のブラウザ画面から手動で行います。BotはタグのAPIを使わず、OA Managerのタグ機能を活用します。</div>
+
+<div class="pb"></div>
+
+<h2 class="sec">5. イベント情報の更新方法 ― 最重要！</h2>
+
+<div class="warn"><strong>⚠️ 重要：</strong> Botが返すイベント情報・AI応答の内容はすべて <strong>SYSTEM_PROMPT</strong> という環境変数から来ています。架空のイベントを生成しないよう設計されており、ここを更新するだけで全機能に反映されます。</div>
+
+<h3 class="sub">SYSTEM_PROMPTの更新手順</h3>
+<div class="sr"><span class="sn">1</span><div>Railway（railway.com）にログインして <strong>earnest-surprise</strong> プロジェクトを開く</div></div>
+<div class="sr"><span class="sn">2</span><div><strong>OGM-official</strong> サービスをクリック → 上部タブの <strong>Variables</strong> をクリック</div></div>
+<div class="sr"><span class="sn">3</span><div><strong>SYSTEM_PROMPT</strong> の行の右端 <strong>⋮（三点メニュー）</strong> → <strong>Edit</strong> をクリック</div></div>
+<div class="sr"><span class="sn">4</span><div>テキストを編集（イベント情報を追加・変更・削除）して <strong>✓ チェックマーク</strong> で保存</div></div>
+<div class="sr"><span class="sn">5</span><div>保存後に <strong>Deploy</strong> ボタンを押すと新しい設定でBotが再起動する</div></div>
+
+<div class="card">
+  <div class="card-title">📌 SYSTEM_PROMPTに書くべき内容</div>
+  <ul style="padding-left:18px;line-height:2;">
+    <li>OGMの団体概要・ミッション・活動内容</li>
+    <li>今後のイベント一覧（日付・場所・定員・LINEグループリンクなど）</li>
+    <li>申込方法・注意事項</li>
+    <li>AIがどんなトーンで返答すべきかの指示</li>
+    <li>過去のイベントはレコメンドしないなどのルール</li>
+  </ul>
+</div>
+
+<h2 class="sec">6. 各サービスの編集場所・ログイン先</h2>
+
+<table>
+  <tr><th>編集したいこと</th><th>どこを開くか</th><th>具体的な操作</th></tr>
+  <tr><td><strong>イベント情報・AI応答内容</strong>を変える</td><td>Railway → Variables → SYSTEM_PROMPT</td><td>SYSTEM_PROMPT を Edit → テキスト編集 → ✓ → Deploy</td></tr>
+  <tr><td><strong>友だち追加時の挨拶文</strong>を変える</td><td>Railway → Variables → GREETING_MESSAGE</td><td>GREETING_MESSAGE を Edit → 文章編集 → ✓ → Deploy</td></tr>
+  <tr><td><strong>管理者を追加・変更</strong>する</td><td>Railway → Variables → ADMIN_IDS</td><td>LINE User IDをカンマ区切りで入力 → ✓ → Deploy</td></tr>
+  <tr><td><strong>Botの動作ロジック</strong>を変える</td><td>GitHub → OGM-official → index.js</td><td>index.js の鉛筆アイコン → コード編集 → Commit changes</td></tr>
+  <tr><td><strong>タグ付け・タグ絞り込み配信</strong></td><td>LINE OA Manager（manager.line.biz）</td><td>チャット画面でユーザーにタグを手動付与 → 配信時に絞り込み</td></tr>
+  <tr><td><strong>登録メンバーデータ</strong>を確認・編集</td><td>Google Sheets → メンバー管理 シート</td><td>スプレッドシートを直接開いて確認・編集</td></tr>
+  <tr><td><strong>イベント参加記録</strong>を確認</td><td>Google Sheets → EventManagement シート</td><td>スプレッドシートを直接開いて確認</td></tr>
+  <tr><td><strong>LINEチャンネル設定</strong>を確認</td><td>LINE Developers Console</td><td>developers.line.biz → チャンネルID 2010101447</td></tr>
+</table>
+
+<div class="pb"></div>
+
+<h2 class="sec">7. 環境変数一覧（Railway Variables）</h2>
+<p style="margin-bottom:9px;">Botの動作に必要な設定値はすべてRailwayの「Variables」画面で管理されています。コードに直接書かないことでセキュリティを保っています。</p>
+
+<table>
+  <tr><th>変数名</th><th>用途</th><th>変更が必要なとき</th></tr>
+  <tr><td><code>TOKEN</code></td><td>LINE Messaging API のアクセストークン。LINEへのメッセージ送信に使用。</td><td>LINEのトークンを再発行したとき</td></tr>
+  <tr><td><code>SECRET</code></td><td>LINE チャンネルシークレット。Webhookの正当性確認に使用。</td><td>LINEのシークレットが変わったとき</td></tr>
+  <tr><td><code>ANTHROPIC_API_KEY</code></td><td>Claude AI（Anthropic）のAPIキー。AI応答・告知文生成に使用。</td><td>APIキーを再発行したとき</td></tr>
+  <tr><td><code>SYSTEM_PROMPT</code></td><td>ClaudeへのシステムプロンプトOGMの説明・イベント情報・応答ルールなどを記載。<strong>最もよく更新する変数。</strong></td><td>イベント情報を更新するたびに変更</td></tr>
+  <tr><td><code>GREETING_MESSAGE</code></td><td>友だち追加時に自動送信されるメッセージ。</td><td>挨拶文を変えたいとき</td></tr>
+  <tr><td><code>ADMIN_IDS</code></td><td>管理者コマンドを使えるLINEユーザーIDリスト（カンマ区切り）。</td><td>管理者を追加・変更するとき</td></tr>
+  <tr><td><code>SPREADSHEET_ID</code></td><td>Google SheetsのID。登録データの保存先を指定。</td><td>スプレッドシートを変更したとき</td></tr>
+  <tr><td><code>GOOGLE_ACCESS_TOKEN</code></td><td>Google Sheets APIの認証トークン。<strong>現在未設定のため、シート書き込みは待機中。</strong></td><td>GCPサービスアカウントを設定するとき</td></tr>
+  <tr><td><code>PORT</code></td><td>サーバーのポート番号（Railwayが自動管理）。</td><td>通常変更不要</td></tr>
+</table>
+
+<div class="warn"><strong>⚠️ Google Sheetsへの書き込みについて：</strong> 現在 <code>GOOGLE_ACCESS_TOKEN</code> が未設定のため、メンバー登録データの自動保存は動作しません。Google Cloud Platformでサービスアカウントを作成し、トークンを設定することで有効になります。</div>
+
+<h2 class="sec">8. よくある質問 / トラブルシューティング</h2>
+
+<div class="tc">
+  <div class="card">
+    <div class="card-title">❓ Botが返事をしない</div>
+    <ul style="padding-left:15px;font-size:12px;line-height:1.9">
+      <li>RailwayでサービスがOnlineになっているか確認</li>
+      <li>LINE DevelopersのWebhook URLが正しいか確認</li>
+      <li>Railway Deploymentsのログを確認</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="card-title">❓ 管理者コマンドが効かない</div>
+    <ul style="padding-left:15px;font-size:12px;line-height:1.9">
+      <li>自分のLINE User IDがADMIN_IDSに入っているか確認</li>
+      <li>LINE User IDはLINE Developers → Botとのチャットで確認可能</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="card-title">❓ 告知文がおかしい内容になる</div>
+    <ul style="padding-left:15px;font-size:12px;line-height:1.9">
+      <li>Railway → SYSTEM_PROMPTのイベント情報を最新に更新する</li>
+      <li>過去のイベントが残っていないか確認して削除する</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="card-title">❓ コードを変えたのに反映されない</div>
+    <ul style="padding-left:15px;font-size:12px;line-height:1.9">
+      <li>GitHubにコミット済みか確認</li>
+      <li>RailwayのDeploymentsでビルド成功しているか確認</li>
+      <li>手動でDeployボタンを押してみる</li>
+    </ul>
+  </div>
+</div>
+
+<h3 class="sub">主要URL一覧まとめ</h3>
+<div class="url">LINE OA Manager: manager.line.biz/account/@154zxfme</div>
+<div class="url">Railway: railway.com → earnest-surprise プロジェクト → OGM-official サービス</div>
+<div class="url">GitHub: github.com/Later928939/OGM-official</div>
+<div class="url">Google Sheets: docs.google.com/spreadsheets/d/1DkAKC2ZZg8zySzX_jROOfcFIOcfWwdadVQnyD3VIyFc</div>
+<div class="url">LINE Developers: developers.line.biz/console/channel/2010101447</div>
+
+<footer>OGM公式LINE Bot システム説明書 ― 2026年5月21日作成 ／ このドキュメントはシステム管理者向けの内部資料です。</footer>
+</body>
+</html>
