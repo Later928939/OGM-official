@@ -1,349 +1,340 @@
-/ =============================================================
+// ==========================================================
 // OGM公式 LINE Bot  (Plan A: OA Manager タグ手動運用版)
 //
 // 役割分担:
 //   Bot  → 登録受付・イベント告知・Botコマンド
-//   OA Manager → タグ付け・タグ絞り込み配信 (手動)
-// =============================================================
+//   OA Manager → タグ付け・タグ絞り込み配信（手動）
+//
+// 変更点: /告知コマンドはSYSTEM_PROMPTのイベント情報を
+//         Claudeが読んで告知文を自動生成する（架空イベントなし）
+// ==========================================================
 
-const express   = require('express');
+const express    = require('express');
 const { Client, middleware } = require('@line/bot-sdk');
-const Anthropic = require('@anthropic-ai/sdk');
-const axios     = require('axios');
+const Anthropic  = require('@anthropic-ai/sdk');
+const axios      = require('axios');
 
 const app = express();
 
-// ── LINE / AI クライアント ────────────────────────────────────
+// — LINE / AI クライアント ——————————————————————————
 const lineConfig = {
-      channelSecret:      process.env.SECRET,
-      channelAccessToken: process.env.TOKEN,
+  channelSecret:       process.env.SECRET,
+  channelAccessToken:  process.env.TOKEN,
 };
-const client    = new Client(lineConfig);
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const client     = new Client(lineConfig);
+const anthropic  = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-// ── 定数 ─────────────────────────────────────────────────────
-const ADMIN_IDS      = (process.env.ADMIN_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
-const SPREADSHEET_ID = process.env.SPREADSHEET_ID || '';
-const LINE_TOKEN     = process.env.TOKEN || '';
+// — 定数 ——————————————————————————————————————
+const LINE_TOKEN      = process.env.TOKEN || '';
+const SPREADSHEET_ID  = process.env.SPREADSHEET_ID || '';
+const ADMIN_IDS       = (process.env.ADMIN_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
+const SYSTEM_PROMPT   = process.env.SYSTEM_PROMPT || 'あなたはOGM公式LINEのAIアシスタントです。';
+const GREETING_MSG    = process.env.GREETING_MESSAGE || 'OGMへようこそ！';
 
-// ── 登録フロー用セッション (メモリ) ──────────────────────────
-// 本番で複数インスタンスに増やす場合は Redis 等に移行してください
-const sessions = new Map(); // { userId: { step, data } }
+// — 登録セッション（メモリ）———————————————————————
+const sessions = new Map(); // userId -> { step, data }
 
-// =============================================================
-// Webhook エントリポイント
-// =============================================================
+// ==========================================================
+// Webhook エンドポイント
+// ==========================================================
 app.post('/webhook', middleware(lineConfig), async (req, res) => {
-      res.status(200).end();
-      for (const event of req.body.events) {
-              try {
-                        if (event.type === 'follow')                                      await onFollow(event);
-                        else if (event.type === 'message' && event.message.type === 'text') await onMessage(event);
-                        else if (event.type === 'postback')                               await onPostback(event);
-              } catch (e) {
-                        console.error('Event error:', e.message);
-              }
-      }
+  res.sendStatus(200);
+  const events = req.body.events || [];
+  for (const event of events) {
+    try {
+      await handleEvent(event);
+    } catch (e) {
+      console.error('Event error:', e.message);
+    }
+  }
 });
 
-// =============================================================
-// フォロー時 → あいさつ + 登録案内
-// =============================================================
-async function onFollow(event) {
-      const msg = process.env.GREETING_MESSAGE ||
-              'OGM公式LINEへようこそ！🎉\n\n' +
-              '大阪公立大学の国際交流団体 OGM です。\n\n' +
-              '「登録」と送ってメンバー登録してください📝';
-      await reply(event.replyToken, msg);
-}
+// ==========================================================
+// イベント振り分け
+// ==========================================================
+async function handleEvent(event) {
+  const { type, source, message, postback } = event;
+  const userId = source?.userId;
 
-// =============================================================
-// テキストメッセージ受信
-// =============================================================
-async function onMessage(event) {
-      const userId = event.source.userId;
-      const text   = event.message.text.trim();
-
-  // ① 管理者コマンド (最優先)
-  if (ADMIN_IDS.includes(userId)) {
-          const done = await handleAdmin(userId, text, event.replyToken);
-          if (done) return;
+  if (type === 'follow') {
+    await handleFollow(userId, event.replyToken);
+    return;
   }
 
-  // ② 登録フロー継続中
+  if (type === 'postback') {
+    await handlePostback(event);
+    return;
+  }
+
+  if (type !== 'message' || message.type !== 'text') return;
+
+  const text = (message.text || '').trim();
+
+  // 管理者コマンド
+  if (ADMIN_IDS.includes(userId) && text.startsWith('/')) {
+    await handleAdminCommand(userId, text, event.replyToken);
+    return;
+  }
+
+  // 登録フロー中か確認
   if (sessions.has(userId)) {
-          await handleRegistration(userId, text, event.replyToken);
-          return;
+    await handleRegistration(userId, text, event.replyToken);
+    return;
   }
 
-  // ③ 登録開始トリガー
-  if (['登録', '参加登録', '登録する'].includes(text)) {
-          sessions.set(userId, { step: 'student_id', data: {} });
-          await reply(event.replyToken,
-                            '📝 メンバー登録を開始します！\n\n' +
-                            'まず学籍番号を入力してください\n（例: k24001234）');
-          return;
+  // 登録トリガー
+  if (/^(登録|参加登録|登録する|メンバー登録)$/.test(text)) {
+    sessions.set(userId, { step: 'studentId', data: {} });
+    await reply(event.replyToken, '📝 登録を開始します！\n\nまず学籍番号を入力してください。\n（例: k24001234）');
+    return;
   }
 
-  // ④ AI 汎用応答
-  const systemPrompt = process.env.SYSTEM_PROMPT ||
-          'あなたはOGM（大阪公立大学国際交流団体）の公式LINEアシスタントです。親切・簡潔に日本語で答えてください。';
-      const resp = await anthropic.messages.create({
-              model:      'claude-opus-4-5',
-              max_tokens: 512,
-              system:     systemPrompt,
-              messages:   [{ role: 'user', content: text }],
-      });
-      await reply(event.replyToken, resp.content[0].text);
+  // AI フォールバック
+  await handleAI(userId, text, event.replyToken);
 }
 
-// =============================================================
-// 登録フロー (学籍番号 → 氏名 → メール)
-// =============================================================
+// ==========================================================
+// フォロー時挨拶
+// ==========================================================
+async function handleFollow(userId, replyToken) {
+  await reply(replyToken, GREETING_MSG);
+}
+
+// ==========================================================
+// 登録フロー
+// ==========================================================
 async function handleRegistration(userId, text, replyToken) {
-      const session = sessions.get(userId);
+  const session = sessions.get(userId);
 
-  switch (session.step) {
-
-      case 'student_id': {
-                if (!/^[a-zA-Z]\d{6,8}$/.test(text)) {
-                            await reply(replyToken, '⚠️ 形式が正しくありません\n例: k24001234\nもう一度入力してください。');
-                            return;
-                }
-                session.data.studentId = text.toLowerCase();
-                session.step = 'name';
-                await reply(replyToken, '👤 お名前をフルネームで入力してください');
-                break;
-      }
-
-      case 'name': {
-                if (text.length < 2) {
-                            await reply(replyToken, '⚠️ お名前を正しく入力してください');
-                            return;
-                }
-                session.data.name = text;
-                session.step = 'email';
-                await reply(replyToken, '📧 メールアドレスを入力してください');
-                break;
-      }
-
-      case 'email': {
-                if (!text.includes('@') || !text.includes('.')) {
-                            await reply(replyToken, '⚠️ 正しいメールアドレスを入力してください');
-                            return;
-                }
-                session.data.email = text.toLowerCase();
-                sessions.delete(userId);
-
-                // スプレッドシートに保存
-                await saveToSheet(userId, session.data);
-
-                await reply(replyToken,
-                                    '✅ 登録完了！\n\n' +
-                                    `📋 学籍番号: ${session.data.studentId}\n` +
-                                    `👤 氏名: ${session.data.name}\n` +
-                                    `📧 メール: ${session.data.email}\n\n` +
-                                    'OGMへようこそ！🎉\nイベント情報をお楽しみに！');
-                break;
-      }
+  if (session.step === 'studentId') {
+    if (!/^[a-zA-Z]\d{6,8}$/.test(text)) {
+      await reply(replyToken, '⚠️ 学籍番号の形式が正しくありません。\n英字1文字＋数字6〜8桁で入力してください。\n例: k24001234');
+      return;
+    }
+    session.data.studentId = text;
+    session.step = 'name';
+    await reply(replyToken, '✅ 学籍番号を受け付けました。\n\n次に、氏名（フルネーム）を入力してください。');
+    return;
   }
+
+  if (session.step === 'name') {
+    if (text.length < 2 || text.length > 30) {
+      await reply(replyToken, '⚠️ 氏名は2〜30文字で入力してください。');
+      return;
+    }
+    session.data.name = text;
+    session.step = 'email';
+    await reply(replyToken, `✅ ${text} さん、ありがとうございます。\n\n最後に、大学のメールアドレスを入力してください。`);
+    return;
+  }
+
+  if (session.step === 'email') {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) {
+      await reply(replyToken, '⚠️ メールアドレスの形式が正しくありません。再度入力してください。');
+      return;
+    }
+    session.data.email = text;
+    sessions.delete(userId);
+
+    // スプレッドシートへ保存
+    await saveToSheet(userId, session.data);
+
+    await reply(replyToken, `🎉 登録完了！\n\n【登録情報】\n学籍番号: ${session.data.studentId}\n氏名: ${session.data.name}\nメール: ${session.data.email}\n\nOGMへようこそ！イベントの詳細はこのアカウントからお知らせします✨`);
+    return;
+  }
+
+  // 不明ステップはリセット
+  sessions.delete(userId);
+  await reply(replyToken, 'セッションをリセットしました。もう一度「登録」と送ってください。');
 }
 
-// =============================================================
-// ポストバック (イベント参加ボタン)
-// =============================================================
-async function onPostback(event) {
-      const userId = event.source.userId;
-      const params = new URLSearchParams(event.postback.data);
-      const action    = params.get('action');
-      const eventName = params.get('event') || 'イベント';
+// ==========================================================
+// 管理者コマンド
+// ==========================================================
+async function handleAdminCommand(userId, text, replyToken) {
+  // /告知 → Claudeに「SYSTEM_PROMPTに記載の今後のイベントを告知文にして」と依頼
+  // /告知 [イベント名] → 指定イベントの告知文を生成
+  if (text.startsWith('/告知')) {
+    const arg = text.replace('/告知', '').trim();
+    try {
+      await reply(replyToken, '⏳ 告知文を生成中...');
+
+      // Claudeに告知文生成を依頼（SYSTEM_PROMPTのイベント情報のみ使用）
+      const prompt = arg
+        ? `以下のイベントについてLINE告知文を作成してください: "${arg}"\nSYSTEM_PROMPTに記載の情報のみ使用し、架空の情報は絶対に追加しないでください。\n告知文のみを返してください（説明不要）。`
+        : 'SYSTEM_PROMPTに記載されている今後のイベントのうち、最も直近のものをLINE告知文にしてください。\n架空の日程・場所・内容は絶対に追加しないでください。\n告知文のみを返してください（説明不要）。';
+
+      const aiRes = await anthropic.messages.create({
+        model: 'claude-opus-4-5',
+        max_tokens: 800,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: prompt }],
+      });
+      const announcement = aiRes.content[0].text;
+
+      // 全ユーザーへブロードキャスト
+      await broadcastText(announcement);
+      return;
+    } catch (e) {
+      console.error('/告知 error:', e.message);
+      await push(userId, '❌ 告知文の生成に失敗しました: ' + e.message);
+      return;
+    }
+  }
+
+  // /全員 [メッセージ] → 全員にテキスト配信
+  if (text.startsWith('/全員 ')) {
+    const msg = text.replace('/全員 ', '').trim();
+    if (!msg) { await reply(replyToken, '⚠️ メッセージを入力してください。'); return; }
+    try {
+      await broadcastText(msg);
+      await reply(replyToken, `✅ 全員に配信しました。`);
+    } catch (e) {
+      await reply(replyToken, '❌ 配信失敗: ' + e.message);
+    }
+    return;
+  }
+
+  // /登録者 → 登録人数
+  if (text === '/登録者') {
+    const count = await getMemberCount();
+    await reply(replyToken, `📊 現在の登録者数: ${count}人`);
+    return;
+  }
+
+  // /イベント → Claudeが今後のイベント一覧を返す（SYSTEM_PROMPTから）
+  if (text === '/イベント') {
+    try {
+      const aiRes = await anthropic.messages.create({
+        model: 'claude-opus-4-5',
+        max_tokens: 600,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: 'SYSTEM_PROMPTに記載の今後のイベント一覧を、日付・イベント名・場所を含めて教えてください。架空の情報は追加しないでください。' }],
+      });
+      await reply(replyToken, aiRes.content[0].text);
+    } catch (e) {
+      await reply(replyToken, '❌ 取得失敗: ' + e.message);
+    }
+    return;
+  }
+
+  // /ヘルプ
+  if (text === '/ヘルプ' || text === '/help') {
+    await reply(replyToken,
+      '📋 管理者コマンド一覧\n' +
+      '━━━━━━━━━━━━━━━\n' +
+      '/告知          → 直近イベントをClaudeが生成して全員に配信\n' +
+      '/告知 [内容]   → 指定内容の告知文をClaudeが生成して全員に配信\n' +
+      '/全員 [MSG]    → 全員にテキスト配信\n' +
+      '/登録者        → 登録者数を確認\n' +
+      '/イベント      → 今後のイベント一覧表示\n' +
+      '/ヘルプ        → このヘルプ\n\n' +
+      '💡 タグ配信はLINE OA Managerで手動で行ってください'
+    );
+    return;
+  }
+
+  await reply(replyToken, '⚠️ 不明なコマンドです。/ヘルプ で一覧を確認できます。');
+}
+
+// ==========================================================
+// ポストバック（イベント参加ボタン）
+// ==========================================================
+async function handlePostback(event) {
+  const { data, replyToken } = event;
+  const userId = event.source?.userId;
+  const params = new URLSearchParams(data);
+  const action = params.get('action');
+  const eventName = params.get('event');
 
   if (action === 'join') {
-          // スプレッドシートに参加意向を記録
-        await recordEventJoin(userId, eventName);
-          await reply(event.replyToken,
-                            `✅ 【${eventName}】への参加希望を受け付けました！\n\n` +
-                            '管理者が確認後、詳細をお送りします。\n' +
-                            '※ OA Manager でタグが付与されます。');
+    await saveEventJoin(userId, eventName);
+    await reply(replyToken,
+      `✅ 「${eventName}」への参加を受け付けました！\n\n詳細はスタッフからご連絡します。\n参加ありがとうございます😊`
+    );
+    return;
+  }
 
-  } else if (action === 'decline') {
-          await reply(event.replyToken, 'またの機会にぜひ参加してください！😊');
+  if (action === 'decline') {
+    await reply(replyToken, `残念！またいつでもイベントに参加してください🙌`);
+    return;
   }
 }
 
-// =============================================================
-// 管理者コマンド
-// =============================================================
-async function handleAdmin(userId, text, replyToken) {
-
-  // ── /告知 イベント名 日付 ─────────────────────────────────
-  // 例: /告知 晩御飯会 2026-06-15
-  if (text.startsWith('/告知')) {
-          const parts     = text.split(' ');
-          const eventName = parts[1] || 'イベント';
-          const date      = parts[2] || '日程未定';
-          await broadcastEventCard(eventName, date);
-          await reply(replyToken,
-                            `📢 【${eventName}】の告知を全員に送信しました！\n` +
-                            `参加者には OA Manager でタグ「${eventName}」を付けてください。`);
-          return true;
+// ==========================================================
+// AI フォールバック（SYSTEM_PROMPTを使用）
+// ==========================================================
+async function handleAI(userId, text, replyToken) {
+  try {
+    const res = await anthropic.messages.create({
+      model: 'claude-opus-4-5',
+      max_tokens: 500,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: text }],
+    });
+    await reply(replyToken, res.content[0].text);
+  } catch (e) {
+    console.error('AI error:', e.message);
+    await reply(replyToken, '少し考えさせてください。もう一度メッセージを送ってみてください。');
   }
-
-  // ── /全員 メッセージ ──────────────────────────────────────
-  // 例: /全員 明日18時に集合です
-  if (text.startsWith('/全員')) {
-          const message = text.replace('/全員', '').trim();
-          if (!message) {
-                    await reply(replyToken, '使い方: /全員 メッセージ本文');
-                    return true;
-          }
-          await broadcastText(message);
-          await reply(replyToken, '✅ 全員にメッセージを送信しました！');
-          return true;
-  }
-
-  // ── /登録者 ───────────────────────────────────────────────
-  if (text === '/登録者') {
-          const count = await getMemberCount();
-          await reply(replyToken,
-                            `📊 登録者数: ${count}名\n\nスプレッドシートで詳細を確認できます。`);
-          return true;
-  }
-
-  // ── /ヘルプ ───────────────────────────────────────────────
-  if (text === '/ヘルプ' || text === '/help') {
-          await reply(replyToken,
-                            '📋 管理者コマンド一覧\n\n' +
-                            '─ イベント告知 ─\n' +
-                            '/告知 [イベント名] [日付]\n' +
-                            '例: /告知 晩御飯会 2026-06-15\n\n' +
-                            '─ 全員送信 ─\n' +
-                            '/全員 [メッセージ]\n' +
-                            '例: /全員 明日18時に集合！\n\n' +
-                            '─ 確認 ─\n' +
-                            '/登録者 → 登録人数を確認\n\n' +
-                            '💡 タグ付け・タグ絞り込み配信は\n' +
-                            'OA Manager のチャット画面から！');
-          return true;
-  }
-
-  return false; // コマンド非該当 → AI 応答へ
 }
 
-// =============================================================
+// ==========================================================
+// ユーティリティ
+// ==========================================================
+async function reply(replyToken, text) {
+  await client.replyMessage({ replyToken, messages: [{ type: 'text', text }] });
+}
+
+async function push(userId, text) {
+  await client.pushMessage({ to: userId, messages: [{ type: 'text', text }] });
+}
+
+async function broadcastText(text) {
+  await axios.post(
+    'https://api.line.me/v2/bot/message/broadcast',
+    { messages: [{ type: 'text', text }] },
+    { headers: { Authorization: `Bearer ${LINE_TOKEN}`, 'Content-Type': 'application/json' } }
+  );
+}
+
+// ==========================================================
 // Google Sheets 書き込み
-// =============================================================
-async function saveToSheet(lineUserId, data) {
-      if (!SPREADSHEET_ID) { console.warn('SPREADSHEET_ID が未設定です'); return; }
-      const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}` +
-                        `/values/%E3%83%A1%E3%83%B3%E3%83%90%E3%83%BC%E7%AE%A1%E7%90%86!A:G:append` +
-                        `?valueInputOption=USER_ENTERED`;
-      try {
-              await axios.post(url,
-                               { values: [[now, lineUserId, data.studentId, data.name, data.email, '', '未確認']] },
-                               { headers: { Authorization: `Bearer ${process.env.GOOGLE_ACCESS_TOKEN}`, 'Content-Type': 'application/json' } }
-                                   );
-              console.log('Sheet saved:', data.studentId);
-      } catch (e) {
-              console.error('Sheet write error:', e.response?.data || e.message);
-      }
+// ==========================================================
+async function saveToSheet(userId, data) {
+  const token = process.env.GOOGLE_ACCESS_TOKEN;
+  if (!token) { console.warn('GOOGLE_ACCESS_TOKEN not set — skipping sheet write'); return; }
+  const sheetName = encodeURIComponent('メンバー管理');
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${sheetName}!A:G:append?valueInputOption=USER_ENTERED`;
+  await axios.post(url,
+    { values: [[new Date().toISOString(), userId, data.studentId, data.name, data.email, '', 'active']] },
+    { headers: { Authorization: `Bearer ${token}` } }
+  ).catch(e => console.error('Sheets write error:', e.response?.data || e.message));
 }
 
-async function recordEventJoin(lineUserId, eventName) {
-      if (!SPREADSHEET_ID) return;
-      const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
-      const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}` +
-                        `/values/EventManagement!A:F:append?valueInputOption=USER_ENTERED`;
-      try {
-              await axios.post(url,
-                               { values: [[eventName, lineUserId, now, '参加希望', '', '']] },
-                               { headers: { Authorization: `Bearer ${process.env.GOOGLE_ACCESS_TOKEN}`, 'Content-Type': 'application/json' } }
-                                   );
-      } catch (e) {
-              console.error('Event join record error:', e.message);
-      }
+async function saveEventJoin(userId, eventName) {
+  const token = process.env.GOOGLE_ACCESS_TOKEN;
+  if (!token) { console.warn('GOOGLE_ACCESS_TOKEN not set — skipping sheet write'); return; }
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/EventManagement!A:F:append?valueInputOption=USER_ENTERED`;
+  await axios.post(url,
+    { values: [[new Date().toISOString(), userId, eventName, '', '', '']] },
+    { headers: { Authorization: `Bearer ${token}` } }
+  ).catch(e => console.error('Sheets write error:', e.response?.data || e.message));
 }
 
 async function getMemberCount() {
-      if (!SPREADSHEET_ID) return '?';
-      try {
-              const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}` +
-                                  `/values/%E3%83%A1%E3%83%B3%E3%83%90%E3%83%BC%E7%AE%A1%E7%90%86!A:A`;
-              const resp = await axios.get(url,
-                                           { headers: { Authorization: `Bearer ${process.env.GOOGLE_ACCESS_TOKEN}` } }
-                                               );
-              const rows = resp.data.values || [];
-              return Math.max(0, rows.length - 1); // ヘッダー行を除く
-      } catch (e) {
-              console.error('getMemberCount error:', e.message);
-              return '?';
-      }
+  const token = process.env.GOOGLE_ACCESS_TOKEN;
+  if (!token) return '(取得不可: 認証未設定)';
+  const sheetName = encodeURIComponent('メンバー管理');
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${SPREADSHEET_ID}/values/${sheetName}!A:A`;
+  const res = await axios.get(url, { headers: { Authorization: `Bearer ${token}` } })
+    .catch(() => null);
+  if (!res) return '(取得失敗)';
+  return Math.max(0, (res.data.values?.length || 1) - 1);
 }
 
-// =============================================================
-// LINE Broadcast ヘルパー
-// =============================================================
-
-// イベント告知カード (参加/不参加ボタン付き)
-async function broadcastEventCard(eventName, date) {
-      const announcementText =
-              `📣 イベントのお知らせ\n\n` +
-              `🎉 【${eventName}】\n` +
-              `📅 ${date}\n\n` +
-              `参加希望の方はボタンを押してください！`;
-      try {
-              await axios.post('https://api.line.me/v2/bot/message/broadcast',
-                               {
-                                           messages: [{
-                                                         type:    'template',
-                                                         altText: `【${eventName}】参加希望はこちら`,
-                                                         template: {
-                                                                         type: 'confirm',
-                                                                         text: announcementText,
-                                                                         actions: [
-                                                                             {
-                                                                                                 type:  'postback',
-                                                                                                 label: '✅ 参加する',
-                                                                                                 data:  `action=join&event=${encodeURIComponent(eventName)}`,
-                                                                             },
-                                                                             {
-                                                                                                 type:  'postback',
-                                                                                                 label: '❌ 参加しない',
-                                                                                                 data:  `action=decline&event=${encodeURIComponent(eventName)}`,
-                                                                             },
-                                                                                         ],
-                                                         },
-                                           }],
-                               },
-                               { headers: { Authorization: `Bearer ${LINE_TOKEN}` } }
-                                   );
-      } catch (e) {
-              console.error('Broadcast card error:', e.response?.data || e.message);
-      }
-}
-
-// テキスト全員送信
-async function broadcastText(message) {
-      try {
-              await axios.post('https://api.line.me/v2/bot/message/broadcast',
-                               { messages: [{ type: 'text', text: message }] },
-                               { headers: { Authorization: `Bearer ${LINE_TOKEN}` } }
-                                   );
-      } catch (e) {
-              console.error('Broadcast text error:', e.response?.data || e.message);
-      }
-}
-
-// =============================================================
-// 共通 reply ヘルパー
-// =============================================================
-async function reply(replyToken, text) {
-      await client.replyMessage(replyToken, { type: 'text', text });
-}
-
-// =============================================================
+// ==========================================================
 // サーバー起動
-// =============================================================
+// ==========================================================
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log(`OGM Bot listening on port ${PORT}`));
