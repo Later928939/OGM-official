@@ -13,8 +13,8 @@ const client = new Client(lineConfig);
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
-const SYSTEM_PROMPT = process.env.SYSTEM_PROMPT || 'あなたはOGM公式LINEのAIアシスタントです。';
-const GREETING_MSG = process.env.GREETING_MESSAGE || 'OGMへようこそ！';
+const SYSTEM_PROMPT = process.env.SYSTEM_PROMPT || 'ããªãã¯OGMå¬å¼LINEã®AIã¢ã·ã¹ã¿ã³ãã§ãã';
+const GREETING_MSG = process.env.GREETING_MESSAGE || 'OGMã¸ããããï¼';
 const SHEET_ID = process.env.SPREADSHEET_ID || '';
 
 const sessions = new Map();
@@ -47,12 +47,12 @@ async function handleEvent(event) {
       if (sessions.has(userId)) {
               return handleRegistration(userId, text, event.replyToken);
       }
-      if (/^(登録|参加登録|登録する|メンバー登録)$/.test(text)) {
+      if (/^(ç»é²|åå ç»é²|ç»é²ãã|ã¡ã³ãã¼ç»é²)$/.test(text)) {
               sessions.set(userId, { step: 'studentId', data: {} });
-              return reply(event.replyToken, '📝 登録を開始します！\n\nまず学籍番号を入力してください。\n（例: AJE25053）');
+              return reply(event.replyToken, 'ð ç»é²ãéå§ãã¾ãï¼\n\nã¾ãå­¦ç±çªå·ãå¥åãã¦ãã ããã\nï¼ä¾: AJE25053ï¼');
       }
 
-  const aiReply = await callClaude(text).catch(() => '少し考えさせてください。もう一度メッセージを送ってみてください。');
+  const aiReply = await callClaude(text).catch(() => 'å°ãèãããã¦ãã ãããããä¸åº¦ã¡ãã»ã¼ã¸ãéã£ã¦ã¿ã¦ãã ããã');
       return reply(event.replyToken, aiReply);
 }
 
@@ -61,32 +61,32 @@ async function handleRegistration(userId, text, replyToken) {
 
   if (session.step === 'studentId') {
           if (!/^[a-zA-Z]{3}\d{5}$/.test(text)) {
-                    return reply(replyToken, '⚠️ 学籍番号の形式が正しくありません。\n英字3文字＋数字5桁で入力してください。\n例: AJE25053');
+                    return reply(replyToken, 'â ï¸ å­¦ç±çªå·ã®å½¢å¼ãæ­£ããããã¾ããã\nè±å­3æå­ï¼æ°å­5æ¡ã§å¥åãã¦ãã ããã\nä¾: AJE25053');
           }
           session.data.studentId = text.toUpperCase();
           session.step = 'name';
-          return reply(replyToken, '✅ 学籍番号を受け付けました。\n\n次に、氏名（フルネーム）を入力してください。');
+          return reply(replyToken, 'â å­¦ç±çªå·ãåãä»ãã¾ããã\n\næ¬¡ã«ãæ°åï¼ãã«ãã¼ã ï¼ãå¥åãã¦ãã ããã');
   }
       if (session.step === 'name') {
               if (text.length < 2 || text.length > 30) {
-                        return reply(replyToken, '⚠️ 氏名は2〜30文字で入力してください。');
+                        return reply(replyToken, 'â ï¸ æ°åã¯2ã30æå­ã§å¥åãã¦ãã ããã');
               }
               session.data.name = text;
               session.step = 'email';
-              return reply(replyToken, '✅ ' + text + ' さん、ありがとうございます。\n\n最後に、大学のメールアドレスを入力してください。');
+              return reply(replyToken, 'â ' + text + ' ããããããã¨ããããã¾ãã\n\næå¾ã«ãå¤§å­¦ã®ã¡ã¼ã«ã¢ãã¬ã¹ãå¥åãã¦ãã ããã');
       }
       if (session.step === 'email') {
               if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) {
-                        return reply(replyToken, '⚠️ メールアドレスの形式が正しくありません。再度入力してください。');
+                        return reply(replyToken, 'â ï¸ ã¡ã¼ã«ã¢ãã¬ã¹ã®å½¢å¼ãæ­£ããããã¾ãããååº¦å¥åãã¦ãã ããã');
               }
               session.data.email = text;
               sessions.delete(userId);
               await saveToSheet(userId, session.data);
-              return reply(replyToken, '🎉 登録完了！\n\n【登録情報】\n学籍番号: ' + session.data.studentId + '\n氏名: ' + session.data.name + '\nメール: ' + session.data.email + '\n\nOGMへようこそ！イベントの詳細はこのアカウントからお知らせします✨');
+              return reply(replyToken, 'ð ç»é²å®äºï¼\n\nãç»é²æå ±ã\nå­¦ç±çªå·: ' + session.data.studentId + '\næ°å: ' + session.data.name + '\nã¡ã¼ã«: ' + session.data.email + '\n\nOGMã¸ããããï¼ã¤ãã³ãã®è©³ç´°ã¯ãã®ã¢ã«ã¦ã³ããããç¥ãããã¾ãâ¨');
       }
 
   sessions.delete(userId);
-      return reply(replyToken, 'セッションをリセットしました。もう一度「登録」と送ってください。');
+      return reply(replyToken, 'ã»ãã·ã§ã³ããªã»ãããã¾ãããããä¸åº¦ãç»é²ãã¨éã£ã¦ãã ããã');
 }
 
 async function handleAdminCommand(userId, text, replyToken) {
@@ -95,64 +95,64 @@ async function handleAdminCommand(userId, text, replyToken) {
               year: 'numeric', month: 'long', day: 'numeric'
       });
 
-  if (text.startsWith('/告知')) {
-          const arg = text.replace('/告知', '').trim();
-          await reply(replyToken, '⏳ 告知文を生成中...');
+  if (text.startsWith('/åç¥')) {
+          const arg = text.replace('/åç¥', '').trim();
+          await reply(replyToken, 'â³ åç¥æãçæä¸­...');
           try {
                     const prompt = arg
-                      ? '以下のイベントについてLINE告知文を作成してください: "' + arg + '"\n今日の日付は' + today + 'です。SYSTEM_PROMPTに記載の情報のみ使用し、架空の情報は絶対に追加しないでください。告知文のみを返してください。'
-                                : '今日の日付は' + today + 'です。SYSTEM_PROMPTに記載されている今後のイベント（今日以降の日程のもの）のうち、最も直近のものをLINE告知文にしてください。過去の日付のイベントは絶対に使用しないでください。架空の日程・場所・内容は絶対に追加しないでください。告知文のみを返してください。';
+                      ? 'ä»¥ä¸ã®ã¤ãã³ãã«ã¤ãã¦LINEåç¥æãä½æãã¦ãã ãã: "' + arg + '"\nä»æ¥ã®æ¥ä»ã¯' + today + 'ã§ããSYSTEM_PROMPTã«è¨è¼ã®æå ±ã®ã¿ä½¿ç¨ããæ¶ç©ºã®æå ±ã¯çµ¶å¯¾ã«è¿½å ããªãã§ãã ãããåç¥æã®ã¿ãè¿ãã¦ãã ããã'
+                                : 'ä»æ¥ã®æ¥ä»ã¯' + today + 'ã§ããSYSTEM_PROMPTã«è¨è¼ããã¦ããä»å¾ã®ã¤ãã³ãï¼ä»æ¥ä»¥éã®æ¥ç¨ã®ãã®ï¼ã®ãã¡ãæãç´è¿ã®ãã®ãLINEåç¥æã«ãã¦ãã ãããéå»ã®æ¥ä»ã®ã¤ãã³ãã¯çµ¶å¯¾ã«ä½¿ç¨ããªãã§ãã ãããæ¶ç©ºã®æ¥ç¨ã»å ´æã»åå®¹ã¯çµ¶å¯¾ã«è¿½å ããªãã§ãã ãããåç¥æã®ã¿ãè¿ãã¦ãã ããã';
                     const announcement = await callClaude(prompt, 800);
                     console.log('Broadcasting announcement:', announcement.substring(0, 100));
                     await broadcast(announcement);
-                    await push(userId, '✅ 告知を全員に配信しました。\n\n配信内容:\n' + announcement.substring(0, 150) + (announcement.length > 150 ? '...' : ''));
+                    await push(userId, 'â åç¥ãå¨å¡ã«éä¿¡ãã¾ããã\n\néä¿¡åå®¹:\n' + announcement.substring(0, 150) + (announcement.length > 150 ? '...' : ''));
           } catch (e) {
-                    console.error('/告知 error:', e.message);
-                    await push(userId, '❌ 告知文の生成に失敗しました: ' + e.message);
+                    console.error('/åç¥ error:', e.message);
+                    await push(userId, 'â åç¥æã®çæã«å¤±æãã¾ãã: ' + e.message);
           }
           return;
   }
 
-  if (text.startsWith('/全員 ')) {
-          const msg = text.slice('/全員 '.length).trim();
-          if (!msg) return reply(replyToken, '⚠️ メッセージを入力してください。');
+  if (text.startsWith('/å¨å¡ ')) {
+          const msg = text.slice('/å¨å¡ '.length).trim();
+          if (!msg) return reply(replyToken, 'â ï¸ ã¡ãã»ã¼ã¸ãå¥åãã¦ãã ããã');
           try {
                     await broadcast(msg);
-                    return reply(replyToken, '✅ 全員に配信しました。');
+                    return reply(replyToken, 'â å¨å¡ã«éä¿¡ãã¾ããã');
           } catch (e) {
-                    return reply(replyToken, '❌ 配信失敗: ' + e.message);
+                    return reply(replyToken, 'â éä¿¡å¤±æ: ' + e.message);
           }
   }
 
-  if (text === '/登録者') {
+  if (text === '/ç»é²è') {
           const count = await getMemberCount();
-          return reply(replyToken, '📊 現在の登録者数: ' + count + '人');
+          return reply(replyToken, 'ð ç¾å¨ã®ç»é²èæ°: ' + count + 'äºº');
   }
 
-  if (text === '/イベント') {
+  if (text === '/ã¤ãã³ã') {
           try {
-                    const res = await callClaude('今日の日付は' + today + 'です。SYSTEM_PROMPTに記載の今後のイベント一覧（今日以降の日程のもの）を、日付・イベント名・場所を含めて教えてください。過去の日付のイベントは含めないでください。架空の情報は追加しないでください。', 600);
+                    const res = await callClaude('ä»æ¥ã®æ¥ä»ã¯' + today + 'ã§ããSYSTEM_PROMPTã«è¨è¼ã®ä»å¾ã®ã¤ãã³ãä¸è¦§ï¼ä»æ¥ä»¥éã®æ¥ç¨ã®ãã®ï¼ããæ¥ä»ã»ã¤ãã³ãåã»å ´æãå«ãã¦æãã¦ãã ãããéå»ã®æ¥ä»ã®ã¤ãã³ãã¯å«ããªãã§ãã ãããæ¶ç©ºã®æå ±ã¯è¿½å ããªãã§ãã ããã', 600);
                     return reply(replyToken, res);
           } catch (e) {
-                    return reply(replyToken, '❌ 取得失敗: ' + e.message);
+                    return reply(replyToken, 'â åå¾å¤±æ: ' + e.message);
           }
   }
 
-  if (text === '/ヘルプ' || text === '/help') {
+  if (text === '/ãã«ã' || text === '/help') {
           return reply(replyToken,
-                             '📋 管理者コマンド一覧\n' +
-                             '━━━━━━━━━━━━━━━\n' +
-                             '/告知 → 直近イベントを告知文に変換して全員に配信\n' +
-                             '/告知 [内容] → 指定内容の告知文を全員に配信\n' +
-                             '/全員 [MSG] → 全員にテキスト配信\n' +
-                             '/登録者 → 登録者数を確認\n' +
-                             '/イベント → 今後のイベント一覧表示\n' +
-                             '/ヘルプ → このヘルプ\n\n' +
-                             '💡 タグ配信はLINE OA Managerで手動で行ってください'
+                             'ð ç®¡çèã³ãã³ãä¸è¦§\n' +
+                             'âââââââââââââââ\n' +
+                             '/åç¥ â ç´è¿ã¤ãã³ããåç¥æã«å¤æãã¦å¨å¡ã«éä¿¡\n' +
+                             '/åç¥ [åå®¹] â æå®åå®¹ã®åç¥æãå¨å¡ã«éä¿¡\n' +
+                             '/å¨å¡ [MSG] â å¨å¡ã«ãã­ã¹ãéä¿¡\n' +
+                             '/ç»é²è â ç»é²èæ°ãç¢ºèª\n' +
+                             '/ã¤ãã³ã â ä»å¾ã®ã¤ãã³ãä¸è¦§è¡¨ç¤º\n' +
+                             '/ãã«ã â ãã®ãã«ã\n\n' +
+                             'ð¡ ã¿ã°éä¿¡ã¯LINE OA Managerã§æåã§è¡ã£ã¦ãã ãã'
                            );
   }
 
-  return reply(replyToken, '⚠️ 不明なコマンドです。/ヘルプ で一覧を確認できます。');
+  return reply(replyToken, 'â ï¸ ä¸æãªã³ãã³ãã§ãã/ãã«ã ã§ä¸è¦§ãç¢ºèªã§ãã¾ãã');
 }
 
 async function handlePostback(event) {
@@ -163,10 +163,10 @@ async function handlePostback(event) {
 
   if (action === 'join') {
           await saveEventJoin(userId, eventName);
-          return reply(event.replyToken, '✅ 「' + eventName + '」への参加を受け付けました！\n詳細はスタッフからご連絡します。参加ありがとうございます😊');
+          return reply(event.replyToken, 'â ã' + eventName + 'ãã¸ã®åå ãåãä»ãã¾ããï¼\nè©³ç´°ã¯ã¹ã¿ãããããé£çµ¡ãã¾ããåå ãããã¨ããããã¾ãð');
   }
       if (action === 'decline') {
-              return reply(event.replyToken, '残念！またいつでもイベントに参加してください🙌');
+              return reply(event.replyToken, 'æ®å¿µï¼ã¾ããã¤ã§ãã¤ãã³ãã«åå ãã¦ãã ããð');
       }
 }
 
@@ -205,31 +205,23 @@ async function broadcast(text) {
 }
 
 async function sheetsAppend(sheetName, values) {
-      const token = process.env.GOOGLE_ACCESS_TOKEN;
-      if (!token) { console.warn('GOOGLE_ACCESS_TOKEN not set — skipping'); return; }
-      const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + SHEET_ID + '/values/' + encodeURIComponent(sheetName) + '!A:Z:append?valueInputOption=USER_ENTERED';
-      const res = await fetch(url, {
-              method: 'POST',
-              headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ values: [values] }),
-      });
-      if (!res.ok) console.error('Sheets error:', await res.text());
+  const url = process.env.GAS_WEBHOOK_URL;
+  if (!url) { console.warn('GAS_WEBHOOK_URL not set — skipping'); return; }
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sheet: sheetName, values: values }),
+    redirect: 'follow',
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!json.ok) console.error('GAS error:', JSON.stringify(json));
 }
-
-function saveToSheet(userId, data) {
-      return sheetsAppend('メンバー管理', [new Date().toISOString(), userId, data.studentId, data.name, data.email, '', 'active']);
-}
-
-function saveEventJoin(userId, eventName) {
-      return sheetsAppend('EventManagement', [new Date().toISOString(), userId, eventName]);
-}
-
 async function getMemberCount() {
       const token = process.env.GOOGLE_ACCESS_TOKEN;
-      if (!token) return '(取得不可: 認証未設定)';
-      const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + SHEET_ID + '/values/' + encodeURIComponent('メンバー管理') + '!A:A';
+      if (!token) return '(åå¾ä¸å¯: èªè¨¼æªè¨­å®)';
+      const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + SHEET_ID + '/values/' + encodeURIComponent('ã¡ã³ãã¼ç®¡ç') + '!A:A';
       const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } }).catch(function() { return null; });
-      if (!res || !res.ok) return '(取得失敗)';
+      if (!res || !res.ok) return '(åå¾å¤±æ)';
       const json = await res.json();
       return Math.max(0, (json.values ? json.values.length : 1) - 1);
 }
