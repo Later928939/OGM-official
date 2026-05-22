@@ -6,202 +6,256 @@ const Anthropic = require('@anthropic-ai/sdk');
 const app = express();
 
 const lineConfig = {
-      channelSecret: process.env.SECRET,
-      channelAccessToken: process.env.TOKEN,
+  channelSecret: process.env.SECRET,
+  channelAccessToken: process.env.TOKEN,
 };
 const client = new Client(lineConfig);
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const ADMIN_IDS = (process.env.ADMIN_IDS || '').split(',').map(s => s.trim()).filter(Boolean);
-const SYSTEM_PROMPT = process.env.SYSTEM_PROMPT || 'ããªãã¯OGMå¬å¼LINEã®AIã¢ã·ã¹ã¿ã³ãã§ãã';
-const GREETING_MSG = process.env.GREETING_MESSAGE || 'OGMã¸ããããï¼';
+const SYSTEM_PROMPT = process.env.SYSTEM_PROMPT || 'あなたはOGM公式LINEのAIアシスタントです。';
+const GREETING_MSG = process.env.GREETING_MESSAGE || 'OGMへようこそ！';
 const SHEET_ID = process.env.SPREADSHEET_ID || '';
 
 const sessions = new Map();
 
 app.post('/webhook', middleware(lineConfig), async (req, res) => {
-      res.sendStatus(200);
-      for (const event of req.body.events || []) {
-              try { await handleEvent(event); }
-              catch (e) { console.error('Event error:', e.message); }
-      }
+  res.sendStatus(200);
+  for (const event of req.body.events || []) {
+    try { await handleEvent(event); }
+    catch (e) { console.error('Event error:', e.message); }
+  }
 });
 
 async function handleEvent(event) {
-      const { type, source, message } = event;
-      const userId = source && source.userId;
+  const { type, source, message } = event;
+  const userId = source && source.userId;
 
   if (type === 'follow') {
-          return reply(event.replyToken, GREETING_MSG);
+    return reply(event.replyToken, GREETING_MSG);
   }
-      if (type === 'postback') {
-              return handlePostback(event);
-      }
-      if (type !== 'message' || !message || message.type !== 'text') return;
+  if (type === 'postback') {
+    return handlePostback(event);
+  }
+  if (type !== 'message' || !message || message.type !== 'text') return;
 
   const text = message.text.trim();
 
   if (ADMIN_IDS.includes(userId) && text.startsWith('/')) {
-          return handleAdminCommand(userId, text, event.replyToken);
+    return handleAdminCommand(userId, text, event.replyToken);
   }
-      if (sessions.has(userId)) {
-              return handleRegistration(userId, text, event.replyToken);
-      }
-      if (/^(ç»é²|åå ç»é²|ç»é²ãã|ã¡ã³ãã¼ç»é²)$/.test(text)) {
-              sessions.set(userId, { step: 'studentId', data: {} });
-              return reply(event.replyToken, 'ð ç»é²ãéå§ãã¾ãï¼\n\nã¾ãå­¦ç±çªå·ãå¥åãã¦ãã ããã\nï¼ä¾: AJE25053ï¼');
-      }
+  if (sessions.has(userId)) {
+    return handleRegistration(userId, text, event.replyToken);
+  }
+  if (/^(登録|参加登録|登録する|メンバー登録)$/.test(text)) {
+    const eventList = await getEventList();
+    sessions.set(userId, { step: 'event', data: {} });
+    return replyWithQuickReply(event.replyToken,
+      '📋 どのイベントに参加しますか？\n\n以下から選択するか、番号を入力してください：',
+      eventList
+    );
+  }
 
-  const aiReply = await callClaude(text).catch(() => 'å°ãèãããã¦ãã ãããããä¸åº¦ã¡ãã»ã¼ã¸ãéã£ã¦ã¿ã¦ãã ããã');
-      return reply(event.replyToken, aiReply);
+  const aiReply = await callClaude(text).catch(() => '少し考えさせてください。もう一度メッセージを送ってみてください。');
+  return reply(event.replyToken, aiReply);
+}
+
+async function getEventList() {
+  try {
+    const today = new Date().toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo', year: 'numeric', month: 'long', day: 'numeric' });
+    const prompt = '今日の日付は' + today + 'です。SYSTEM_PROMPTに記載されている今後のイベント（今日以降の日程のもの）を簡潔なリスト形式で返してください。各イベントを「イベント名」のみで1行ずつ列挙してください。最大10件。過去のイベントは含めないでください。';
+    const result = await callClaude(prompt, 300);
+    const lines = result.split('\n').map(l => l.trim()).filter(l => l && !l.match(/^[0-9]+[.\.]/)).slice(0, 10);
+    // 番号付きでフォーマット
+    return lines.length > 0 ? lines : ['イベントA', 'イベントB'];
+  } catch(e) {
+    console.error('getEventList error:', e.message);
+    return ['イベントA', 'イベントB'];
+  }
 }
 
 async function handleRegistration(userId, text, replyToken) {
-      const session = sessions.get(userId);
+  const session = sessions.get(userId);
+
+  if (session.step === 'event') {
+    const eventList = session.data.eventList || [];
+    let chosen = '';
+    // 番号で選択
+    const num = parseInt(text, 10);
+    if (!isNaN(num) && num >= 1 && num <= eventList.length) {
+      chosen = eventList[num - 1];
+    } else {
+      // テキストで選択（quickReplyのラベルやそのまま入力）
+      const match = eventList.find(e => e === text || text.includes(e) || e.includes(text));
+      if (match) {
+        chosen = match;
+      } else {
+        const listText = eventList.map((e, i) => (i+1) + '. ' + e).join('\n');
+        return reply(replyToken, '⚠️ イベントを選択してください。\n\n' + listText + '\n\n番号または名前で入力してください。');
+      }
+    }
+    session.data.event = chosen;
+    session.step = 'studentId';
+    return reply(replyToken, '✅ 「' + chosen + '」を選択しました。\n\n次に学籍番号を入力してください。\n（例: AJE25053）');
+  }
 
   if (session.step === 'studentId') {
-          if (!/^[a-zA-Z]{3}\d{5}$/.test(text)) {
-                    return reply(replyToken, 'â ï¸ å­¦ç±çªå·ã®å½¢å¼ãæ­£ããããã¾ããã\nè±å­3æå­ï¼æ°å­5æ¡ã§å¥åãã¦ãã ããã\nä¾: AJE25053');
-          }
-          session.data.studentId = text.toUpperCase();
-          session.step = 'name';
-          return reply(replyToken, 'â å­¦ç±çªå·ãåãä»ãã¾ããã\n\næ¬¡ã«ãæ°åï¼ãã«ãã¼ã ï¼ãå¥åãã¦ãã ããã');
+    if (!/^[a-zA-Z]{3}\d{5}$/.test(text)) {
+      return reply(replyToken, '⚠️ 学籍番号の形式が正しくありません。\n英字3文字＋数字5桁で入力してください。\n例: AJE25053');
+    }
+    session.data.studentId = text.toUpperCase();
+    session.step = 'name';
+    return reply(replyToken, '✅ 学籍番号を受け付けました。\n\n次に、氏名（フルネーム）を入力してください。');
   }
-      if (session.step === 'name') {
-              if (text.length < 2 || text.length > 30) {
-                        return reply(replyToken, 'â ï¸ æ°åã¯2ã30æå­ã§å¥åãã¦ãã ããã');
-              }
-              session.data.name = text;
-              session.step = 'email';
-              return reply(replyToken, 'â ' + text + ' ããããããã¨ããããã¾ãã\n\næå¾ã«ãå¤§å­¦ã®ã¡ã¼ã«ã¢ãã¬ã¹ãå¥åãã¦ãã ããã');
-      }
-      if (session.step === 'email') {
-              if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) {
-                        return reply(replyToken, 'â ï¸ ã¡ã¼ã«ã¢ãã¬ã¹ã®å½¢å¼ãæ­£ããããã¾ãããååº¦å¥åãã¦ãã ããã');
-              }
-              session.data.email = text;
-              sessions.delete(userId);
-              await saveToSheet(userId, session.data);
-              return reply(replyToken, 'ð ç»é²å®äºï¼\n\nãç»é²æå ±ã\nå­¦ç±çªå·: ' + session.data.studentId + '\næ°å: ' + session.data.name + '\nã¡ã¼ã«: ' + session.data.email + '\n\nOGMã¸ããããï¼ã¤ãã³ãã®è©³ç´°ã¯ãã®ã¢ã«ã¦ã³ããããç¥ãããã¾ãâ¨');
-      }
+  if (session.step === 'name') {
+    if (text.length < 2 || text.length > 30) {
+      return reply(replyToken, '⚠️ 氏名は2〜30文字で入力してください。');
+    }
+    session.data.name = text;
+    session.step = 'email';
+    return reply(replyToken, '✅ ' + text + ' さん、ありがとうございます。\n\n最後に、大学のメールアドレスを入力してください。');
+  }
+  if (session.step === 'email') {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(text)) {
+      return reply(replyToken, '⚠️ メールアドレスの形式が正しくありません。再度入力してください。');
+    }
+    session.data.email = text;
+    sessions.delete(userId);
+    await saveToSheet(userId, session.data);
+    return reply(replyToken, '🎉 登録完了！\n\n【ご登録情報】\nイベント: ' + session.data.event + '\n学籍番号: ' + session.data.studentId + '\n氏名: ' + session.data.name + '\nメール: ' + session.data.email + '\n\nOGMへようこそ！イベントの詳細はこのアカウントからお知らせします✨');
+  }
 
   sessions.delete(userId);
-      return reply(replyToken, 'ã»ãã·ã§ã³ããªã»ãããã¾ãããããä¸åº¦ãç»é²ãã¨éã£ã¦ãã ããã');
+  return reply(replyToken, 'セッションをリセットしました。もう一度「登録」と送ってください。');
 }
 
 async function handleAdminCommand(userId, text, replyToken) {
-      const today = new Date().toLocaleDateString('ja-JP', {
-              timeZone: 'Asia/Tokyo',
-              year: 'numeric', month: 'long', day: 'numeric'
-      });
+  const today = new Date().toLocaleDateString('ja-JP', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric', month: 'long', day: 'numeric'
+  });
 
-  if (text.startsWith('/åç¥')) {
-          const arg = text.replace('/åç¥', '').trim();
-          await reply(replyToken, 'â³ åç¥æãçæä¸­...');
-          try {
-                    const prompt = arg
-                      ? 'ä»¥ä¸ã®ã¤ãã³ãã«ã¤ãã¦LINEåç¥æãä½æãã¦ãã ãã: "' + arg + '"\nä»æ¥ã®æ¥ä»ã¯' + today + 'ã§ããSYSTEM_PROMPTã«è¨è¼ã®æå ±ã®ã¿ä½¿ç¨ããæ¶ç©ºã®æå ±ã¯çµ¶å¯¾ã«è¿½å ããªãã§ãã ãããåç¥æã®ã¿ãè¿ãã¦ãã ããã'
-                                : 'ä»æ¥ã®æ¥ä»ã¯' + today + 'ã§ããSYSTEM_PROMPTã«è¨è¼ããã¦ããä»å¾ã®ã¤ãã³ãï¼ä»æ¥ä»¥éã®æ¥ç¨ã®ãã®ï¼ã®ãã¡ãæãç´è¿ã®ãã®ãLINEåç¥æã«ãã¦ãã ãããéå»ã®æ¥ä»ã®ã¤ãã³ãã¯çµ¶å¯¾ã«ä½¿ç¨ããªãã§ãã ãããæ¶ç©ºã®æ¥ç¨ã»å ´æã»åå®¹ã¯çµ¶å¯¾ã«è¿½å ããªãã§ãã ãããåç¥æã®ã¿ãè¿ãã¦ãã ããã';
-                    const announcement = await callClaude(prompt, 800);
-                    console.log('Broadcasting announcement:', announcement.substring(0, 100));
-                    await broadcast(announcement);
-                    await push(userId, 'â åç¥ãå¨å¡ã«éä¿¡ãã¾ããã\n\néä¿¡åå®¹:\n' + announcement.substring(0, 150) + (announcement.length > 150 ? '...' : ''));
-          } catch (e) {
-                    console.error('/åç¥ error:', e.message);
-                    await push(userId, 'â åç¥æã®çæã«å¤±æãã¾ãã: ' + e.message);
-          }
-          return;
+  if (text.startsWith('/告知')) {
+    const arg = text.replace('/告知', '').trim();
+    await reply(replyToken, '⏳ 告知文を生成中...');
+    try {
+      const prompt = arg
+        ? '以下のイベントについてLINE告知文を作成してください: "' + arg + '"\n今日の日付は' + today + 'です。SYSTEM_PROMPTに記載の情報のみ使用し、架空の情報は絶対に追加しないでください。告知文のみを返してください。'
+        : '今日の日付は' + today + 'です。SYSTEM_PROMPTに記載されている今後のイベント（今日以降の日程のもの）のうち、最も直近のものをLINE告知文にしてください。過去の日付のイベントは絶対に使用しないでください。架空の日程・場所・内容は絶対に追加しないでください。告知文のみを返してください。';
+      const announcement = await callClaude(prompt, 800);
+      console.log('Broadcasting announcement:', announcement.substring(0, 100));
+      await broadcast(announcement);
+      await push(userId, '✅ 告知を全員に送信しました。\n\n送信内容:\n' + announcement.substring(0, 150) + (announcement.length > 150 ? '...' : ''));
+    } catch (e) {
+      console.error('/告知 error:', e.message);
+      await push(userId, '❌ 告知文の生成に失敗しました: ' + e.message);
+    }
+    return;
   }
 
-  if (text.startsWith('/å¨å¡ ')) {
-          const msg = text.slice('/å¨å¡ '.length).trim();
-          if (!msg) return reply(replyToken, 'â ï¸ ã¡ãã»ã¼ã¸ãå¥åãã¦ãã ããã');
-          try {
-                    await broadcast(msg);
-                    return reply(replyToken, 'â å¨å¡ã«éä¿¡ãã¾ããã');
-          } catch (e) {
-                    return reply(replyToken, 'â éä¿¡å¤±æ: ' + e.message);
-          }
+  if (text.startsWith('/全員 ')) {
+    const msg = text.slice('/全員 '.length).trim();
+    if (!msg) return reply(replyToken, '⚠️ メッセージを入力してください。');
+    try {
+      await broadcast(msg);
+      await push(userId, '✅ 全員に送信しました: ' + msg.substring(0, 50));
+    } catch (e) {
+      await push(userId, '❌ 送信失敗: ' + e.message);
+    }
+    return;
   }
 
-  if (text === '/ç»é²è') {
-          const count = await getMemberCount();
-          return reply(replyToken, 'ð ç¾å¨ã®ç»é²èæ°: ' + count + 'äºº');
+  if (text === '/人数') {
+    const count = await getMemberCount();
+    return reply(replyToken, '👥 現在のメンバー数: ' + count + '人');
   }
 
-  if (text === '/ã¤ãã³ã') {
-          try {
-                    const res = await callClaude('ä»æ¥ã®æ¥ä»ã¯' + today + 'ã§ããSYSTEM_PROMPTã«è¨è¼ã®ä»å¾ã®ã¤ãã³ãä¸è¦§ï¼ä»æ¥ä»¥éã®æ¥ç¨ã®ãã®ï¼ããæ¥ä»ã»ã¤ãã³ãåã»å ´æãå«ãã¦æãã¦ãã ãããéå»ã®æ¥ä»ã®ã¤ãã³ãã¯å«ããªãã§ãã ãããæ¶ç©ºã®æå ±ã¯è¿½å ããªãã§ãã ããã', 600);
-                    return reply(replyToken, res);
-          } catch (e) {
-                    return reply(replyToken, 'â åå¾å¤±æ: ' + e.message);
-          }
+  if (text === '/help' || text === '/ヘルプ') {
+    return reply(replyToken,
+      '📖 管理者コマンド一覧\n\n' +
+      '/告知 - 直近のイベントを全員に告知\n' +
+      '/告知 [内容] - 指定内容で告知\n' +
+      '/全員 [メッセージ] - 全員にメッセージ送信\n' +
+      '/人数 - 登録者数を確認'
+    );
   }
 
-  if (text === '/ãã«ã' || text === '/help') {
-          return reply(replyToken,
-                             'ð ç®¡çèã³ãã³ãä¸è¦§\n' +
-                             'âââââââââââââââ\n' +
-                             '/åç¥ â ç´è¿ã¤ãã³ããåç¥æã«å¤æãã¦å¨å¡ã«éä¿¡\n' +
-                             '/åç¥ [åå®¹] â æå®åå®¹ã®åç¥æãå¨å¡ã«éä¿¡\n' +
-                             '/å¨å¡ [MSG] â å¨å¡ã«ãã­ã¹ãéä¿¡\n' +
-                             '/ç»é²è â ç»é²èæ°ãç¢ºèª\n' +
-                             '/ã¤ãã³ã â ä»å¾ã®ã¤ãã³ãä¸è¦§è¡¨ç¤º\n' +
-                             '/ãã«ã â ãã®ãã«ã\n\n' +
-                             'ð¡ ã¿ã°éä¿¡ã¯LINE OA Managerã§æåã§è¡ã£ã¦ãã ãã'
-                           );
-  }
-
-  return reply(replyToken, 'â ï¸ ä¸æãªã³ãã³ãã§ãã/ãã«ã ã§ä¸è¦§ãç¢ºèªã§ãã¾ãã');
+  return reply(replyToken, '❓ 不明なコマンドです。/help で一覧を確認できます。');
 }
 
 async function handlePostback(event) {
-      const userId = event.source && event.source.userId;
-      const params = new URLSearchParams(event.data);
-      const action = params.get('action');
-      const eventName = params.get('event');
+  const userId = event.source && event.source.userId;
+  const params = new URLSearchParams(event.data);
+  const action = params.get('action');
+  const eventName = params.get('event');
 
-  if (action === 'join') {
-          await saveEventJoin(userId, eventName);
-          return reply(event.replyToken, 'â ã' + eventName + 'ãã¸ã®åå ãåãä»ãã¾ããï¼\nè©³ç´°ã¯ã¹ã¿ãããããé£çµ¡ãã¾ããåå ãããã¨ããããã¾ãð');
+  if (action === 'selectEvent' && eventName) {
+    const session = sessions.get(userId);
+    if (session && session.step === 'event') {
+      session.data.event = eventName;
+      session.step = 'studentId';
+      return reply(event.replyToken, '✅ 「' + eventName + '」を選択しました。\n\n次に学籍番号を入力してください。\n（例: AJE25053）');
+    }
   }
-      if (action === 'decline') {
-              return reply(event.replyToken, 'æ®å¿µï¼ã¾ããã¤ã§ãã¤ãã³ãã«åå ãã¦ãã ããð');
-      }
 }
 
-async function callClaude(userPrompt, maxTokens) {
-      if (!maxTokens) maxTokens = 500;
-      const res = await anthropic.messages.create({
-              model: 'claude-opus-4-5',
-              max_tokens: maxTokens,
-              system: SYSTEM_PROMPT,
-              messages: [{ role: 'user', content: userPrompt }],
-      });
-      return res.content[0].text;
+async function saveToSheet(userId, data) {
+  const now = new Date().toLocaleString('ja-JP', { timeZone: 'Asia/Tokyo' });
+  await sheetsAppend('参加者', [
+    now,
+    userId,
+    data.event || '',
+    data.studentId || '',
+    data.name || '',
+    data.email || '',
+  ]);
+}
+
+async function callClaude(text, maxTokens = 500) {
+  const msg = await anthropic.messages.create({
+    model: 'claude-opus-4-5',
+    max_tokens: maxTokens,
+    system: SYSTEM_PROMPT,
+    messages: [{ role: 'user', content: text }],
+  });
+  return msg.content[0].text;
 }
 
 function reply(replyToken, text) {
-      return client.replyMessage(replyToken, [{ type: 'text', text: text }]);
+  return client.replyMessage(replyToken, [{ type: 'text', text }]);
+}
+
+function replyWithQuickReply(replyToken, text, items) {
+  const quickReply = {
+    items: items.slice(0, 13).map((label, i) => ({
+      type: 'action',
+      action: {
+        type: 'postback',
+        label: label.length > 20 ? label.substring(0, 20) : label,
+        data: 'action=selectEvent&event=' + encodeURIComponent(label),
+        displayText: label,
+      }
+    }))
+  };
+  return client.replyMessage(replyToken, [{
+    type: 'text',
+    text,
+    quickReply,
+  }]);
 }
 
 function push(userId, text) {
-      return client.pushMessage(userId, [{ type: 'text', text: text }]);
+  return client.pushMessage(userId, [{ type: 'text', text }]);
 }
 
 async function broadcast(text) {
-      console.log('broadcast() called, length:', text.length);
-      try {
-              const result = await client.broadcast([{ type: 'text', text: text }]);
-              console.log('broadcast() success');
-              return result;
-      } catch (e) {
-              console.error('broadcast() error:', e.message, e.statusCode);
-              if (e.originalError && e.originalError.response) {
-                        console.error('broadcast() detail:', JSON.stringify(e.originalError.response.data));
-              }
-              throw e;
-      }
+  const friends = await client.getFriends().catch(() => null);
+  console.log('broadcast: friends API result:', friends);
+  if (!friends) {
+    console.log('broadcast: falling back to broadcastMessage');
+    return client.broadcast([{ type: 'text', text }]);
+  }
+  return client.broadcast([{ type: 'text', text }]);
 }
 
 async function sheetsAppend(sheetName, values) {
@@ -216,15 +270,16 @@ async function sheetsAppend(sheetName, values) {
   const json = await res.json().catch(() => ({}));
   if (!json.ok) console.error('GAS error:', JSON.stringify(json));
 }
+
 async function getMemberCount() {
-      const token = process.env.GOOGLE_ACCESS_TOKEN;
-      if (!token) return '(åå¾ä¸å¯: èªè¨¼æªè¨­å®)';
-      const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + SHEET_ID + '/values/' + encodeURIComponent('ã¡ã³ãã¼ç®¡ç') + '!A:A';
-      const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } }).catch(function() { return null; });
-      if (!res || !res.ok) return '(åå¾å¤±æ)';
-      const json = await res.json();
-      return Math.max(0, (json.values ? json.values.length : 1) - 1);
+  const token = process.env.GOOGLE_ACCESS_TOKEN;
+  if (!token) return '(取得不可: トークン未設定)';
+  const url = 'https://sheets.googleapis.com/v4/spreadsheets/' + SHEET_ID + '/values/' + encodeURIComponent('参加者') + '!A:A';
+  const res = await fetch(url, { headers: { Authorization: 'Bearer ' + token } }).catch(() => null);
+  if (!res || !res.ok) return '(取得失敗)';
+  const json = await res.json();
+  return Math.max(0, (json.values ? json.values.length : 1) - 1);
 }
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, function() { console.log('OGM Bot listening on port ' + PORT); });
+app.listen(PORT, function () { console.log('OGM Bot listening on port ' + PORT); });
